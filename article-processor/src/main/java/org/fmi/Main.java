@@ -26,8 +26,10 @@ public class Main {
     private static final Set<String> STOP_WORDS = new HashSet<>();
     private static final ObjectMapper mapper = new ObjectMapper();
     private static final BGLemmatizer BG_LEMMATIZER = new BGLemmatizer();
+    private static final BGStemmer BG_STEMMER = new BGStemmer();
 
     private static final String STOP_WORDS_FILE = "stop-words.txt";
+    private static final String STEM_RULES_CONTEXT_FILE = "stem-rules-context.txt";
     private static final String BASE_PATH = "/Users/sgenchev/irl";
 
     private static int PROCESSED_COUNTER = 0;
@@ -53,8 +55,9 @@ public class Main {
             BASE_PATH + "/novinibg/2021-1-30", BASE_PATH + "/novinibg-output/2021-1-30"
     );
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws Exception {
         populateStopWords();
+        BG_STEMMER.loadStemmingRules(STEM_RULES_CONTEXT_FILE);
 
         MEDIA_INPUT_TO_OUTPUT_PATH.forEach((inputPath, outputPath) -> {
             System.out.println(String.format("In folder %s", inputPath));
@@ -107,6 +110,8 @@ public class Main {
             if (token.isEmpty() || STOP_WORDS.contains(token)) continue;
 
             String tokenLemma = BG_LEMMATIZER.getLemma(BG_DICTIONARY, token, null);
+            String tokenStem = BG_STEMMER.stem(token);
+            // TODO: which to use? stem or lemma
             tokens.add(tokenLemma == null ? token : tokenLemma);
         }
 
