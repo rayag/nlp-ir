@@ -2,4 +2,8 @@ article-processor/target
 .idea
 *.iml
 .DS_Store
+__pycache__
+word2vec.model.wv.vectors.npy
+word2vec.model.trainables.syn1neg.npy
+word2vec.model
 
