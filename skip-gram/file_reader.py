@@ -4,6 +4,7 @@ import string
 import unicodedata
 import string
 import re
+from lemmagen3 import Lemmatizer
 
 NEWS_BASE_DIR = '/home/lt38092/crawled_news'
 
@@ -26,6 +27,7 @@ class FileReader:
            '/dnevnik-output/2021-1-30/'
         ]
         self.base_dir = NEWS_BASE_DIR if base_dir is None else base_dir
+        self.lem = Lemmatizer('bg')
 
     def read_stopwords(self):
         result = set()
@@ -41,9 +43,9 @@ class FileReader:
             for fname in os.listdir(media_abs_dir):
                 raw = open(os.path.join(media_abs_dir, fname), "r").read()
                 parsed = json.loads(raw)
-                body = parsed["bodyTokens"]
-                title = parsed["titleTokens"]
-                summary = parsed["summaryTokens"]
+                body = [self.lem.lemmatize(s) for s in parsed["bodyTokens"]]
+                title = [self.lem.lemmatize(s) for s in parsed["titleTokens"]]
+                summary = [self.lem.lemmatize(s) for s in parsed["summaryTokens"]]
                 yield [*title, *summary, *body]
 
     def iter_filename(self):
@@ -75,11 +77,14 @@ class FileReader:
 
     def process_token(self, token):
         pattern = re.compile(r'[^а-яА-Я]')
-        cleared = re.sub(pattern, '', unicodedata.normalize("NFKD", token))
+        cleared = re.sub(pattern, '', token)
+        cleared = self.lem.lemmatize(cleared)
         if cleared in self.stop_words or len(cleared) < 2:
             return None
         return cleared
-            
+
+    def preprocess_input(self, sentance):
+        return self.get_clear_token_list(sentance.lower().split())            
 
     def get_clear_token_list(self, raw_tokens):
         result = list()
@@ -90,3 +95,19 @@ class FileReader:
                 if cleared is not None:
                     result.append(cleared)
         return result
+
+    def read_article(self, path):
+        with open(self.base_dir + path, 'r') as f:
+            json_obj = json.loads(f.read())
+            return json_obj["titleTokens"], json_obj["summaryTokens"], json_obj["bodyTokens"]
+
+    def get_property_from_json_file(self, abs_path, prop):
+        with open(abs_path, 'r') as f:
+            json_obj = json.loads(f.read())
+            return json_obj[prop]
+
+    def get_clean_article(self, path_processed):
+        path_to_clean = re.sub(r"^(\/[a-z]*)-output(.*)$", r"\1\2", path_processed)
+        with open(self.base_dir + path_to_clean, 'r') as f:
+            json_obj = json.loads(f.read())
+            return json_obj["title"], json_obj["summary"], json_obj["body"] 
