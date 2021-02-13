@@ -9,12 +9,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import java.util.StringTokenizer;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -26,22 +27,21 @@ public class Main {
     private static final Set<String> STOP_WORDS = new HashSet<>();
     private static final ObjectMapper mapper = new ObjectMapper();
     private static final BGLemmatizer BG_LEMMATIZER = new BGLemmatizer();
-    private static final BGStemmer BG_STEMMER = new BGStemmer();
 
     private static final String STOP_WORDS_FILE = "stop-words.txt";
-    private static final String STEM_RULES_CONTEXT_FILE = "stem-rules-context.txt";
     private static final String BASE_PATH = "/Users/sgenchev/irl";
 
-    private static int PROCESSED_COUNTER = 0;
-
-    private static BgDictionary BG_DICTIONARY;
+    private static final BgDictionary BG_DICTIONARY;
 
     static {
+        BgDictionary temp = null;
         try {
-            BG_DICTIONARY = BGLangTools.loadBuiltinDictionary();
+            temp = BGLangTools.loadBuiltinDictionary();
         } catch (Exception e) {
             e.printStackTrace();
         }
+
+        BG_DICTIONARY = temp;
     }
 
     private static final Map<String, String> MEDIA_INPUT_TO_OUTPUT_PATH = Map.of(
@@ -57,63 +57,58 @@ public class Main {
 
     public static void main(String[] args) throws Exception {
         populateStopWords();
-        BG_STEMMER.loadStemmingRules(STEM_RULES_CONTEXT_FILE);
 
         MEDIA_INPUT_TO_OUTPUT_PATH.forEach((inputPath, outputPath) -> {
             System.out.println(String.format("In folder %s", inputPath));
 
-            Path dir = Paths.get(inputPath);
-            try {
-                Files.walk(dir)
-                        .map(Path::toFile)
-                        .filter(File::isFile)
-                        .forEach(file -> {
-                            if (PROCESSED_COUNTER % 1_000 == 0) {
-                                System.out.println(String.format("Processed: %d", PROCESSED_COUNTER));
-                            }
+            new Thread(() -> {
+                Path dir = Paths.get(inputPath);
+                try {
+                    Files.walk(dir)
+                            .map(Path::toFile)
+                            .filter(File::isFile)
+                            .forEach(file -> {
+                                InputArticle inputArticle;
+                                try {
+                                    inputArticle = mapper.readValue(file, InputArticle.class);
+                                } catch (IOException e) {
+                                    System.out.println(String.format("On file %s", file.getAbsolutePath()));
+                                    e.printStackTrace();
+                                    return;
+                                }
 
-                            PROCESSED_COUNTER++;
-
-                            InputArticle inputArticle;
-                            try {
-                                inputArticle = mapper.readValue(file, InputArticle.class);
-                            } catch (IOException e) {
-                                System.out.println(String.format("On file %s", file.getAbsolutePath()));
-                                e.printStackTrace();
-                                return;
-                            }
-
-                            OutputArticle outputArticle = inputArticleToOutputArticle(inputArticle);
-                            File articleFile = new File(String.format("%s/%s", outputPath, file.getName()));
-                            try {
-                                mapper.writeValue(articleFile, outputArticle);
-                            } catch (IOException e) {
-                                System.out.println(String.format("On file %s", file.getAbsolutePath()));
-                                e.printStackTrace();
-                            }
-                        });
-            } catch (IOException e) {
-                System.out.println(String.format("On folder %s", inputPath));
-                e.printStackTrace();
-            }
+                                OutputArticle outputArticle = inputArticleToOutputArticle(inputArticle);
+                                File articleFile = new File(String.format("%s/%s", outputPath, file.getName()));
+                                try {
+                                    mapper.writeValue(articleFile, outputArticle);
+                                } catch (IOException e) {
+                                    System.out.println(String.format("On file %s", file.getAbsolutePath()));
+                                    e.printStackTrace();
+                                }
+                            });
+                } catch (IOException e) {
+                    System.out.println(String.format("On folder %s", inputPath));
+                    e.printStackTrace();
+                }
+            }).start();
 
             System.out.println(String.format("Out of folder %s", inputPath));
         });
     }
 
     private static List<String> textToTokens(String text) {
-        text = text.replaceAll("\\s{2,}", " ");
-        List<String> tokens = new ArrayList<>();
-        StringTokenizer tokenizer = new StringTokenizer(text, " \t\n\r\f,.:;?![]'\"");
-        while (tokenizer.hasMoreTokens()) {
-            String token = tokenizer.nextToken();
-            if (token.isEmpty() || STOP_WORDS.contains(token)) continue;
-
-            String tokenLemma = BG_LEMMATIZER.getLemma(BG_DICTIONARY, token, null);
-            String tokenStem = BG_STEMMER.stem(token);
-            // TODO: which to use? stem or lemma
-            tokens.add(tokenLemma == null ? token : tokenLemma);
-        }
+        String[] splitText = text.trim().split("\\s+");
+        List<String> tokens = Arrays.stream(splitText)
+                .map(token -> token.replaceAll("[^-а-яА-Я]", ""))
+                .map(String::trim)
+                .filter(token ->
+                        !token.isEmpty()
+                                && !token.startsWith("-")
+                                && !token.endsWith("-")
+                                && !STOP_WORDS.contains(token))
+                .map(token -> Objects.requireNonNullElse(
+                        BG_LEMMATIZER.getLemma(BG_DICTIONARY, token, null), token))
+                .collect(Collectors.toList());
 
         return tokens;
     }
