@@ -12,6 +12,8 @@ class Model:
                 negative=15, iter=10, workers=multiprocessing.cpu_count())
         else:
             self.model = Word2Vec.load("word2vec.model")
+            print(self.model.epochs)
+            self.model.train(self.generator, total_examples=15212, epochs=self.model.epochs)
         self.model.save("word2vec.model")
 
     def predict(self, word):

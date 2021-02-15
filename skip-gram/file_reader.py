@@ -4,6 +4,8 @@ import string
 import unicodedata
 import string
 import re
+import datetime
+from media_dirs import *
 from lemmagen3 import Lemmatizer
 
 NEWS_BASE_DIR = '/home/lt38092/crawled_news'
@@ -16,16 +18,7 @@ class FileReader:
     """
     def __init__(self, base_dir = None):
         self.stop_words = self.read_stopwords() # a set of stop words
-        self.media_dirs = [
-           '/manager-output/2021-1-31/',
-           '/economy-output/2021-1-31/',
-           '/dirbg-output/2021-1-31/',
-           '/vesti-output/2021-1-30/',
-           '/btv-output/2021-1-27/',
-           '/nova-output/2021-1-30/',
-           '/novinibg-output/2021-1-30/',
-           '/dnevnik-output/2021-1-30/'
-        ]
+        self.media_dirs = MEDIA_DIR_MAP.values()
         self.base_dir = NEWS_BASE_DIR if base_dir is None else base_dir
         self.lem = Lemmatizer('bg')
 
@@ -111,3 +104,33 @@ class FileReader:
         with open(self.base_dir + path_to_clean, 'r') as f:
             json_obj = json.loads(f.read())
             return json_obj["title"], json_obj["summary"], json_obj["body"] 
+
+    def get_by_year(self, year):
+        for media_dir in self.media_dirs:
+            media_abs_dir = self.base_dir + media_dir
+            print(media_abs_dir)
+            for fname in os.listdir(media_abs_dir):
+                raw = open(os.path.join(media_abs_dir, fname), "r").read()
+                parsed = json.loads(raw)
+                if int(parsed["year"]) != year:
+                    continue
+                body = [self.lem.lemmatize(s) for s in parsed["bodyTokens"]]
+                title = [self.lem.lemmatize(s) for s in parsed["titleTokens"]]
+                summary = [self.lem.lemmatize(s) for s in parsed["summaryTokens"]]
+                yield [*title, *summary, *body]
+    
+    def get_by_media_and_in_period(self, media, period_start, period_end):
+        media_abs_dir = NEWS_BASE_DIR + MEDIA_DIR_MAP[media]
+        for fname in os.listdir(media_abs_dir):
+            raw = open(os.path.join(media_abs_dir, fname), "r").read()
+            parsed = json.loads(raw)
+            if int(parsed['month']) <= 0 or int(parsed['month']) > 12:
+                continue
+            article_date = datetime.datetime(int(parsed['year']), 
+                int(parsed['month']), int(parsed['day']))
+            if article_date > period_end or article_date < period_start:
+                continue
+            body = [self.lem.lemmatize(s) for s in parsed["bodyTokens"]]
+            title = [self.lem.lemmatize(s) for s in parsed["titleTokens"]]
+            summary = [self.lem.lemmatize(s) for s in parsed["summaryTokens"]]
+            yield [*title, *summary, *body]

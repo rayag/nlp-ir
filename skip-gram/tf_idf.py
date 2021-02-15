@@ -2,6 +2,7 @@ import json
 import os
 import numpy as np
 import heapq
+import collections
 from numpy.linalg import norm
 
 INDEX_DIR_PATH = "/home/lt38092/crawled_news/index/"
@@ -65,12 +66,53 @@ class TfIdf:
 
         for doc_path in docs_set:
             doc_vector = self.document_vector(doc_path)
-            cos_sim = 1 - np.inner(query_vector, doc_vector) / (norm(query_vector) * norm(doc_vector))
+            cos_sim = np.inner(query_vector, doc_vector) / (norm(query_vector) * norm(doc_vector))
             if len(closest_docs) < k:
                 heapq.heappush(closest_docs, (cos_sim, doc_path))
             else:
                 heapq.heappushpop(closest_docs, (cos_sim, doc_path))
         return closest_docs
+
+    def get_k_closet_to_query(self, query_tokens, k = 15):
+        closest_docs = list()
+        query_unique_tokens = list(set(query_tokens))
+        query_tf_idf = self.get_tf_idf(query_unique_tokens, query_tokens)
+        docs_set = self.get_docs(query_unique_tokens)
+
+        for doc_path in docs_set:
+            doc_vector = self.article_tf_idf(query_unique_tokens ,doc_path)
+            cos_sim = np.inner(query_tf_idf, doc_vector) / (norm(query_tf_idf) * norm(doc_vector))
+            if len(closest_docs) < k:
+                heapq.heappush(closest_docs, (cos_sim, doc_path))
+            else:
+                heapq.heappushpop(closest_docs, (cos_sim, doc_path))
+        return closest_docs
+
+
+    def get_tf_idf(self, unique_tokens, tokens):
+        counts = collections.Counter(tokens)
+        n = len(unique_tokens)
+        tf = np.zeros(n, dtype=float)
+        for i in range(n):
+            if unique_tokens[i] in counts:
+                tf[i] = counts[unique_tokens[i]]
+        tf = tf / (len(tokens) + 1)
+
+        tf_idf = tf
+        for i in range(n):
+            df = 1
+            if unique_tokens[i] in self.df:
+                _, df = self.get_df_idx(unique_tokens[i])
+            idf = 1 + np.log(self.docs_count / df)
+            tf_idf[i] *= idf
+        return tf_idf 
+                
+    def article_tf_idf(self, unique_tokens, doc_path):
+        title, summary, body = self.reader.read_article(doc_path)
+        title_tf_idf = self.get_tf_idf(unique_tokens, title)
+        summary_tf_idf = self.get_tf_idf(unique_tokens, summary)
+        body_tf_idf = self.get_tf_idf(unique_tokens, body)
+        return TITLE_WEIGHT * title_tf_idf + SUMMARY_WEIGHT * summary_tf_idf + BODY_WEIGHT * body_tf_idf
 
     def get_docs(self, tokens):
         result = set()
@@ -104,7 +146,7 @@ class TfIdf:
         if word in self.df:
             return self.df[word]
         else: 
-            return None, 0
+            return None, 1
 
     def unique_words_counts(self, tokens):
         result = dict()
